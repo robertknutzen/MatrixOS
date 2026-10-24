@@ -84,7 +84,7 @@ struct NotePadRuntime {
     MidiPacket midiPacket;
     while (midiPipeline.Get(midiPacket))
     {
-      MatrixOS::MIDI::Send(midiPacket, MIDI_PORT_ALL);
+      MatrixOS::MIDI::Send(midiPacket, MIDI_PORT_EACH_CLASS);
     }
   }
 };

@@ -355,12 +355,12 @@ void Note::PlayView() {
 
   if (runtimes[0].noteLatch.IsEnabled())
   {
-    MatrixOS::MIDI::Send(MidiPacket::ControlChange(runtimes[0].config->channel, 123, 0), MIDI_PORT_ALL); // All notes off
+    MatrixOS::MIDI::Send(MidiPacket::ControlChange(runtimes[0].config->channel, 123, 0), MIDI_PORT_EACH_CLASS); // All notes off
   }
 
   if (runtimes[1].noteLatch.IsEnabled())
   {
-    MatrixOS::MIDI::Send(MidiPacket::ControlChange(runtimes[1].config->channel, 123, 0), MIDI_PORT_ALL); // All notes off
+    MatrixOS::MIDI::Send(MidiPacket::ControlChange(runtimes[1].config->channel, 123, 0), MIDI_PORT_EACH_CLASS); // All notes off
   }
 }
 
@@ -1875,7 +1875,7 @@ void Note::Tick() {
   {
     if (clockMode == CLOCK_INTERNAL_CLOCKOUT && midiClock.TickCount() % (EFFECT_TPQN / 24) == 0)
     {
-      MatrixOS::MIDI::Send(MidiPacket::Clock(), MIDI_PORT_ALL);
+      MatrixOS::MIDI::Send(MidiPacket::Clock(), MIDI_PORT_EACH_CLASS);
     }
     runtimes[0].Tick();
     runtimes[1].Tick();

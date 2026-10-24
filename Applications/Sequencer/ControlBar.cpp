@@ -368,7 +368,7 @@ bool SequencerControlBar::HandleClearKey(KeypadInfo* keypadInfo) {
             auto activeIt = sequencer->noteActive.find(noteData.note);
             if (activeIt != sequencer->noteActive.end())
             {
-              MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, noteData.note, 0), MIDI_PORT_ALL);
+              MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, noteData.note, 0), MIDI_PORT_EACH_CLASS);
               sequencer->noteActive.erase(activeIt);
             }
           }
@@ -552,7 +552,7 @@ bool SequencerControlBar::HandleStepOctaveOffsetKey(bool positive, KeypadInfo* k
           if (it->second.eventType == SequenceEventType::NoteEvent)
           {
             SequenceEventNote noteData = std::get<SequenceEventNote>(it->second.data);
-            MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, noteData.note, 0), MIDI_PORT_ALL);
+            MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, noteData.note, 0), MIDI_PORT_EACH_CLASS);
 
             // Remove from noteActive
             auto activeIt = sequencer->noteActive.find(noteData.note);
@@ -572,7 +572,7 @@ bool SequencerControlBar::HandleStepOctaveOffsetKey(bool positive, KeypadInfo* k
           if (it->second.eventType == SequenceEventType::NoteEvent)
           {
             SequenceEventNote noteData = std::get<SequenceEventNote>(it->second.data);
-            MatrixOS::MIDI::Send(MidiPacket::NoteOn(channel, noteData.note, noteData.velocity), MIDI_PORT_ALL);
+            MatrixOS::MIDI::Send(MidiPacket::NoteOn(channel, noteData.note, noteData.velocity), MIDI_PORT_EACH_CLASS);
 
             // Add to noteActive
             sequencer->noteActive.insert(noteData.note);

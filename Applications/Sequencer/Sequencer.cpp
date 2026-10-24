@@ -1363,7 +1363,7 @@ void Sequencer::ClearActiveNotes() {
   uint8_t channel = sequence.GetChannel(track);
   for (const auto& note : noteActive)
   {
-    MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, 0), MIDI_PORT_ALL);
+    MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, 0), MIDI_PORT_EACH_CLASS);
   }
   noteActive.clear();
 }
@@ -1372,7 +1372,7 @@ void Sequencer::ClearSelectedNotes() {
   uint8_t channel = sequence.GetChannel(track);
   for (const auto& [note, velocity] : noteSelected)
   {
-    MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, 0), MIDI_PORT_ALL);
+    MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, 0), MIDI_PORT_EACH_CLASS);
   }
   noteSelected.clear();
 }

@@ -66,15 +66,15 @@ public:
     }
     if (keypadInfo->state == KeypadState::Pressed)
     {
-      MatrixOS::MIDI::Send(MidiPacket::NoteOn(channel, note, noteVelocity.to7bits()), MIDI_PORT_ALL);
+      MatrixOS::MIDI::Send(MidiPacket::NoteOn(channel, note, noteVelocity.to7bits()), MIDI_PORT_EACH_CLASS);
     }
     else if (keypadInfo->state == KeypadState::Aftertouch)
     {
-      MatrixOS::MIDI::Send(MidiPacket::AfterTouch(channel, note, pressure.to7bits()), MIDI_PORT_ALL);
+      MatrixOS::MIDI::Send(MidiPacket::AfterTouch(channel, note, pressure.to7bits()), MIDI_PORT_EACH_CLASS);
     }
     else if (keypadInfo->state == KeypadState::Released)
     {
-      MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, forceSensitive ? keypadInfo->velocity.to7bits() : 0), MIDI_PORT_ALL);
+      MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, forceSensitive ? keypadInfo->velocity.to7bits() : 0), MIDI_PORT_EACH_CLASS);
     }
     return true;
   }

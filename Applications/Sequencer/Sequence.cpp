@@ -250,7 +250,7 @@ void Sequence::Tick() {
     {
       if (clockOutput)
       {
-        MatrixOS::MIDI::Send(MidiPacket::Clock(), MIDI_PORT_ALL); // MIDI Clock message
+        MatrixOS::MIDI::Send(MidiPacket::Clock(), MIDI_PORT_EACH_CLASS); // MIDI Clock message
       }
 
       lastClockTime += usPerClock; // advance by period to maintain phase
@@ -413,7 +413,7 @@ void Sequence::PlayClip(uint8_t track, uint8_t clip) {
       trackPlayback[i].noteOffQueue.clear();
     }
 
-    MatrixOS::MIDI::Send(MidiPacket::Start(), MIDI_PORT_ALL);
+    MatrixOS::MIDI::Send(MidiPacket::Start(), MIDI_PORT_EACH_CLASS);
   }
 
   // Terminate recorded notes on this track before switching
@@ -541,7 +541,7 @@ void Sequence::Resume() {
     }
   }
 
-  MatrixOS::MIDI::Send(MidiPacket::Continue(), MIDI_PORT_ALL);
+  MatrixOS::MIDI::Send(MidiPacket::Continue(), MIDI_PORT_EACH_CLASS);
 }
 
 bool Sequence::CanResume() {
@@ -587,9 +587,9 @@ void Sequence::Stop() {
     TerminateRecordedNotes(track);
     for (const auto& [note, tick] : trackPlayback[track].noteOffMap)
     {
-      MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, 0), MIDI_PORT_ALL);
+      MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, 0), MIDI_PORT_EACH_CLASS);
     }
-    MatrixOS::MIDI::Send(MidiPacket::ControlChange(channel, 120, 0), MIDI_PORT_ALL); // All sound off per channel
+    MatrixOS::MIDI::Send(MidiPacket::ControlChange(channel, 120, 0), MIDI_PORT_EACH_CLASS); // All sound off per channel
 
     // Save current position to resume position and mark if it can be resumed
     trackPlayback[track].resumePosition = trackPlayback[track].position;
@@ -601,7 +601,7 @@ void Sequence::Stop() {
     trackPlayback[track].playing = false;
   }
 
-  MatrixOS::MIDI::Send(MidiPacket::Stop(), MIDI_PORT_ALL);
+  MatrixOS::MIDI::Send(MidiPacket::Stop(), MIDI_PORT_EACH_CLASS);
 
   if (sessionLayer > 127 && lastRecordLayer > 127)
   {
@@ -639,9 +639,9 @@ void Sequence::Stop(uint8_t track) {
   TerminateRecordedNotes(track);
   for (const auto& [note, tick] : trackPlayback[track].noteOffMap)
   {
-    MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, 0), MIDI_PORT_ALL);
+    MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, 0), MIDI_PORT_EACH_CLASS);
   }
-  MatrixOS::MIDI::Send(MidiPacket::ControlChange(channel, 120, 0), MIDI_PORT_ALL); // All sound off
+  MatrixOS::MIDI::Send(MidiPacket::ControlChange(channel, 120, 0), MIDI_PORT_EACH_CLASS); // All sound off
 
   trackPlayback[track].noteOffMap.clear();
   trackPlayback[track].noteOffQueue.clear();
@@ -663,7 +663,7 @@ void Sequence::Stop(uint8_t track) {
     playing = false;
     clocksTillStart = 0;
     trackPlayback[track].resumePosition = trackPlayback[track].position;
-    MatrixOS::MIDI::Send(MidiPacket::Stop(), MIDI_PORT_ALL);
+    MatrixOS::MIDI::Send(MidiPacket::Stop(), MIDI_PORT_EACH_CLASS);
   }
 }
 
@@ -1666,7 +1666,7 @@ void Sequence::SetSolo(uint8_t track, bool val, bool exclusive) {
 
     // Send all-notes-off on this track's channel when solo state changes
     uint8_t channel = GetChannel(track);
-    MatrixOS::MIDI::Send(MidiPacket::ControlChange(channel, 123, 0), MIDI_PORT_ALL);
+    MatrixOS::MIDI::Send(MidiPacket::ControlChange(channel, 123, 0), MIDI_PORT_EACH_CLASS);
     // Also send all-notes-off to other channels when soloing to avoid stuck notes
     if (val && (exclusive || previousSolo == 0))
     {
@@ -1675,7 +1675,7 @@ void Sequence::SetSolo(uint8_t track, bool val, bool exclusive) {
         uint8_t ch = GetChannel(i);
         if (ch == channel)
           continue;
-        MatrixOS::MIDI::Send(MidiPacket::ControlChange(ch, 123, 0), MIDI_PORT_ALL);
+        MatrixOS::MIDI::Send(MidiPacket::ControlChange(ch, 123, 0), MIDI_PORT_EACH_CLASS);
       }
     }
     dirty = true;
@@ -1708,7 +1708,7 @@ void Sequence::SetMute(uint8_t track, bool val) {
 
     // Send all-notes-off on this track's channel when mute state changes
     uint8_t channel = GetChannel(track);
-    MatrixOS::MIDI::Send(MidiPacket::ControlChange(channel, 123, 0), MIDI_PORT_ALL);
+    MatrixOS::MIDI::Send(MidiPacket::ControlChange(channel, 123, 0), MIDI_PORT_EACH_CLASS);
     dirty = true;
   }
 }
@@ -2234,11 +2234,11 @@ void Sequence::ProcessTrack(uint8_t track) {
         uint8_t channel = data.tracks[track].channel;
         if (noteData.aftertouch)
         {
-          MatrixOS::MIDI::Send(MidiPacket::AfterTouch(channel, noteData.note, noteData.velocity), MIDI_PORT_ALL);
+          MatrixOS::MIDI::Send(MidiPacket::AfterTouch(channel, noteData.note, noteData.velocity), MIDI_PORT_EACH_CLASS);
         }
         else
         {
-          MatrixOS::MIDI::Send(MidiPacket::NoteOn(channel, noteData.note, noteData.velocity), MIDI_PORT_ALL);
+          MatrixOS::MIDI::Send(MidiPacket::NoteOn(channel, noteData.note, noteData.velocity), MIDI_PORT_EACH_CLASS);
         }
 
         uint8_t note = noteData.note;
@@ -2274,7 +2274,7 @@ void Sequence::ProcessTrack(uint8_t track) {
       case SequenceEventType::ControlChangeEvent: {
         const SequenceEventCC& ccEvent = std::get<SequenceEventCC>(ev.data);
         uint8_t channel = data.tracks[track].channel;
-        MatrixOS::MIDI::Send(MidiPacket::ControlChange(channel, ccEvent.param, ccEvent.value), MIDI_PORT_ALL);
+        MatrixOS::MIDI::Send(MidiPacket::ControlChange(channel, ccEvent.param, ccEvent.value), MIDI_PORT_EACH_CLASS);
         break;
       }
       default:
@@ -2293,7 +2293,7 @@ void Sequence::ProcessTrack(uint8_t track) {
     if (trackEnabled)
     {
       uint8_t channel = GetChannel(track);
-      MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, 0), MIDI_PORT_ALL);
+      MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, note, 0), MIDI_PORT_EACH_CLASS);
     }
 
     trackPlayback[track].noteOffMap.erase(note);

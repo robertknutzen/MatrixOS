@@ -163,7 +163,7 @@ bool PatternPad::KeyEvent(Point xy, KeypadInfo* keypadInfo) {
           auto activeIt = sequencer->noteActive.find(noteData.note);
           if (activeIt != sequencer->noteActive.end())
           {
-            MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, noteData.note, 0), MIDI_PORT_ALL);
+            MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, noteData.note, 0), MIDI_PORT_EACH_CLASS);
             sequencer->noteActive.erase(activeIt);
           }
         }
@@ -211,7 +211,7 @@ bool PatternPad::KeyEvent(Point xy, KeypadInfo* keypadInfo) {
         {
           const SequenceEventNote& noteData = std::get<SequenceEventNote>(it->second.data);
           sequencer->noteActive.insert(noteData.note);
-          MatrixOS::MIDI::Send(MidiPacket::NoteOn(channel, noteData.note, noteData.velocity), MIDI_PORT_ALL);
+          MatrixOS::MIDI::Send(MidiPacket::NoteOn(channel, noteData.note, noteData.velocity), MIDI_PORT_EACH_CLASS);
         }
         ++it;
       }
@@ -244,7 +244,7 @@ bool PatternPad::KeyEvent(Point xy, KeypadInfo* keypadInfo) {
           // Only send NoteOff if note is not currently selected on NotePad
           if (sequencer->noteSelected.find(noteData.note) == sequencer->noteSelected.end())
           {
-            MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, noteData.note, 0), MIDI_PORT_ALL);
+            MatrixOS::MIDI::Send(MidiPacket::NoteOff(channel, noteData.note, 0), MIDI_PORT_EACH_CLASS);
           }
         }
         ++eventIt;

@@ -34,6 +34,7 @@ Strum
 # Reversi
 Companion
 Developer
+SC1000
 # PolyPlayground
 [System]Python
 

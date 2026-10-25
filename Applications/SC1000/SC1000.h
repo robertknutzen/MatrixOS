@@ -1,112 +1,139 @@
 // SC1000: one-way USB MIDI controller for the Portablism SC1000/SC500.
-// Spec: "SC1000 Controller app for Mystrix Pro — build plan.md" in the repo root.
 // Targets the default "Lemur preset" map of rasteri/SC1000 v1.7.
+// Layout: the user's Main / Settings / Perform tables (see "SC1000 Controller app for Mystrix Pro — build plan.md"
+// and the notes files next to it in the repo root).
 #pragma once
 
 #include <deque>
+#include <vector>
 #include "MatrixOS.h"
 #include "Application.h"
+#include "Scales.h" // From Applications/Note
 
 class SC1000 : public Application {
 public:
   inline static Application_Info info = {
       .name = "SC1000",
       .author = "b0b",
-      .color = Color(0xFF6000),
-      .version = 1,
+      .color = Color(0x0050FF),
+      .version = 2,
       .visibility = true,
   };
 
   // MIDI channels used by the SC1000 default map (0-based: 0 = MIDI channel 1)
-  static constexpr uint8_t CH_BEATS = 0;
-  static constexpr uint8_t CH_SAMPLES = 1;
   static constexpr uint8_t CH_KEYS = 3;
   static constexpr uint8_t CH_CONTROL = 4;
-
-  // Channel 5 control notes
-  static constexpr uint8_t NOTE_STARTSTOP[2] = {0, 1};
-  static constexpr uint8_t NOTE_NEXT_FILE[2] = {2, 3};
-  static constexpr uint8_t NOTE_PREV_FILE[2] = {6, 7};
-  static constexpr uint8_t NOTE_RANDOM_SAMPLE = 11;
-  static constexpr uint8_t NOTE_RECORD = 126;
-  static constexpr uint8_t NOTE_SHIFT = 127;
 
   // Decks double as their MIDI channel
   static constexpr uint8_t DECK_BEATS = 0;
   static constexpr uint8_t DECK_SAMPLES = 1;
 
-  // Perform page rows (0 = top)
-  static constexpr uint8_t ROW_SAMPLE_CUES = 0; // and row 1
-  static constexpr uint8_t ROW_BEAT_CUES = 2;
-  static constexpr uint8_t ROW_CUT = 3;
-  static constexpr uint8_t ROW_TRANSPORT = 4;
-  static constexpr uint8_t ROW_PITCH = 5;
-  static constexpr uint8_t ROW_BEATS_VOLUME = 6;
-  static constexpr uint8_t ROW_SAMPLES_VOLUME = 7;
+  // Channel 5 control notes, indexed by deck
+  static constexpr uint8_t NOTE_NEXT_FILE[2] = {2, 3};
+  static constexpr uint8_t NOTE_PREV_FILE[2] = {6, 7};
+  static constexpr uint8_t NOTE_SHIFT = 127;
+
+  static constexpr uint8_t CUE_BEAT_REPEAT = 65; // Scratch cue, never set by the cue pads
+  static constexpr uint8_t SAMPLE_ORIGINAL_NOTE = 60;
+  static constexpr int8_t KEY_RANGE = 24; // Keys further than this from the original pitch are disabled
 
   // The SC1000 holds one pending MIDI command, so space messages out
   static constexpr uint32_t MIN_SEND_GAP_US = 5000;
 
   // Pitch is tracked in hundredths of a percent; must match scsettings pitchrange
   static constexpr int32_t PITCH_RANGE = 50 * 100;
-  static constexpr int32_t PITCH_STEP_FINE = 10;    // 0.1%
-  static constexpr int32_t PITCH_STEP_COARSE = 100; // 1%
+  static constexpr int32_t PITCH_STEP = 10; // 0.1%
   static constexpr uint32_t NUDGE_REPEAT_DELAY_MS = 400;
   static constexpr uint32_t NUDGE_REPEAT_INTERVAL_MS = 80;
 
-  enum CutMode : uint8_t { CUT_GATE = 0, CUT_KILL = 1 };
+  enum Page : uint8_t { PAGE_MAIN, PAGE_SETTINGS, PAGE_PERFORM };
 
   void Setup(const vector<string>& args) override;
   void Loop() override;
   void End() override;
 
 private:
-  CreateSavedVar("SC1000", cutMode, uint8_t, CUT_GATE);
-  CreateSavedVar("SC1000", pressureEnabled, bool, true);
+  // Settings
+  CreateSavedVar("SC1000", bpm, uint16_t, 120);
+  CreateSavedVar("SC1000", keyRoot, uint8_t, 0);
+  CreateSavedVar("SC1000", scale, uint16_t, MAJOR);
+  CreateSavedVar("SC1000", brQuantize, bool, false);
 
+  Page page = PAGE_MAIN;
   Timer renderTimer;
+  bool held[8][8] = {};
+  uint32_t holdStartMs[8][8] = {};
+  uint32_t lastRepeatMs[8][8] = {};
 
   // State mirror (the SC1000 never reports back)
-  bool cueSet[2][16] = {};
-  uint8_t volume[2] = {127, 127}; // Level set by the faders
-  bool volumeKnown[2] = {false, false};
+  bool cueSet[2][8] = {};
   int32_t pitch[2] = {0, 0};
-  bool coarsePitch = false;
-  bool gateClosed = false; // Gate mode has silenced the samples deck
+  uint8_t sampleNote = SAMPLE_ORIGINAL_NOTE;
 
-  // Pad state
-  bool held[8][8] = {};
-  uint8_t cutPressure[8] = {}; // 7-bit pressure per held cut pad
-  uint32_t nudgeHoldStart[8] = {};
-  uint32_t nudgeLastRepeat[8] = {};
+  // Internal clock (not sent as MIDI clock)
+  uint64_t clockOriginUs = 0;
+  uint32_t BeatUs();
+  uint64_t NextBeatUs(uint64_t now);
+  void SetBpm(uint16_t newBpm);
+
+  // Beat repeat, one engine per deck
+  struct BeatRepeat {
+    std::vector<uint8_t> heldRates; // Most recent last; 4/8/16/32
+    bool started = false;
+    bool pending = false;
+    uint64_t pendingStartUs = 0;
+    uint64_t lastTriggerUs = 0;
+    uint64_t nextRepeatUs = 0;
+  };
+  BeatRepeat beatRepeat[2];
+  uint32_t RepeatIntervalUs(uint8_t rate);
+  void BeatRepeatPress(uint8_t deck, uint8_t rate);
+  void BeatRepeatRelease(uint8_t deck, uint8_t rate);
+  void BeatRepeatTick();
+  void BeatRepeatStart(uint8_t deck, uint64_t now);
+
+  // Perform keys: rows 5-7 (0-based), 255 = disabled
+  uint8_t keyMap[3][8] = {};
+  void GenerateKeyMap();
+  bool IsKeyRoot(uint8_t note);
 
   // Output
   std::deque<MidiPacket> outQueue;
-  uint32_t lastSendUs = 0;
-  int16_t sentVolume[2] = {-1, -1};
-  uint8_t targetVolume[2] = {127, 127};
-  bool volumeDirty[2] = {false, false};
-  uint8_t nextVolumeDeck = 0;
-
-  void InputEventHandler(InputEvent& inputEvent);
-  void PadEvent(Point xy, KeypadInfo& keypad);
-  void CuePad(uint8_t deck, uint8_t cue, KeypadState state);
-  void CutPad(uint8_t x, KeypadInfo& keypad);
-  void TransportPad(uint8_t x, KeypadState state);
-  void PitchPad(uint8_t x, KeypadState state);
-  void VolumePad(uint8_t deck, uint8_t x, KeypadState state);
-
-  void Nudge(uint8_t deck, int8_t direction);
-  void SetPitch(uint8_t deck, int32_t value);
-  void ResetDeckMirror(uint8_t deck);
-  void UpdateVolumeTargets();
-  void SetCutMode(uint8_t mode);
-  void HandleNudgeRepeat();
-
+  uint64_t lastSendUs = 0;
   void Queue(MidiPacket packet);
   void FlushOutput();
   void SendSpaced(MidiPacket packet);
 
+  // Shared actions
+  void Background(); // Clock-driven work that must keep running on every page and menu
+  void CuePad(uint8_t deck, uint8_t cue);
+  void Nudge(uint8_t deck, int8_t direction);
+  void SetPitch(uint8_t deck, int32_t value);
+  void ResetSamplePitch();
+  void PlaySampleNote(uint8_t note);
+  void ChangeFile(uint8_t deck, bool next);
+  void ResetDeckMirror(uint8_t deck);
+  int8_t SpeedDirection(uint8_t deck); // -1 slower, 0 normal, 1 faster
+  bool ShiftHeld();
+  void HandleNudgeRepeat();
+
+  // Pages (SC1000Pages.cpp)
+  void InputEventHandler(InputEvent& inputEvent);
+  void PadEvent(Point xy, KeypadState state);
+  bool TopRowsEvent(Point xy, KeypadState state);
+  void MainEvent(Point xy, KeypadState state);
+  void SettingsEvent(Point xy, KeypadState state);
+  void PerformEvent(Point xy, KeypadState state);
   void Render();
-  static uint8_t FaderLevel(uint8_t x);
+  void RenderTopRows();
+  void RenderMain();
+  void RenderSettings();
+  void RenderPerform();
+  Color Pad(Color color, bool bright, Point xy);
+  Color Pulse(Color color, uint8_t rate, Point xy);
+  static bool IsExitPad(Point xy);
+
+  // Menus (SC1000Menus.cpp)
+  void BpmPage();
+  void ScalePage();
 };

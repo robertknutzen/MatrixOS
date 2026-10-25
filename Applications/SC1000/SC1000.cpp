@@ -1,22 +1,12 @@
 #include "SC1000.h"
-
-namespace
-{
-const Color COLOR_BEATS = Color(0xFF6000);
-const Color COLOR_SAMPLES = Color(0x00B0FF);
-const Color COLOR_CONTROL = Color(0xFFFFFF);
-const Color COLOR_SHIFT = Color(0xA000FF);
-const Color COLOR_RECORD = Color(0xFF0000);
-const Color COLOR_GATE = Color(0x00FF40);
-const Color COLOR_KILL = Color(0xFF2000);
-const Color COLOR_DETUNED = Color(0xFFB000);
-const Color COLOR_PRESS = Color(0xFFFFFF);
-const uint8_t DIM = 40;
-} // namespace
+#include <cmath>
 
 void SC1000::Setup(const vector<string>& args) {
   MatrixOS::LED::Fill(Color(0));
-  lastSendUs = (uint32_t)MatrixOS::SYS::Micros();
+  uint64_t now = MatrixOS::SYS::Micros();
+  lastSendUs = now;
+  clockOriginUs = now;
+  GenerateKeyMap();
 }
 
 void SC1000::Loop() {
@@ -28,92 +18,186 @@ void SC1000::Loop() {
     InputEventHandler(inputEvent);
   }
 
-  HandleNudgeRepeat();
-  FlushOutput();
+  Background();
 
   if (renderTimer.Tick(1000 / Device::LED::fps))
     Render();
 }
 
+void SC1000::Background() {
+  HandleNudgeRepeat();
+  BeatRepeatTick();
+  FlushOutput();
+}
+
 void SC1000::End() {
-  // Finish anything queued (e.g. a pending shift-off), then make sure no deck is left silenced by a cut pad
+  // Delete any scratch cue left by a beat repeat that was still running
+  for (uint8_t deck = 0; deck < 2; deck++)
+  {
+    if (beatRepeat[deck].started)
+    {
+      Queue(MidiPacket::NoteOn(CH_CONTROL, NOTE_SHIFT, 127));
+      Queue(MidiPacket::NoteOn(deck, CUE_BEAT_REPEAT, 127));
+      Queue(MidiPacket::NoteOff(CH_CONTROL, NOTE_SHIFT, 0));
+    }
+  }
   while (!outQueue.empty())
   {
     SendSpaced(outQueue.front());
     outQueue.pop_front();
   }
+}
+
+// ---------- Internal clock ----------
+
+uint32_t SC1000::BeatUs() {
+  return 60000000UL / bpm;
+}
+
+uint64_t SC1000::NextBeatUs(uint64_t now) {
+  uint32_t beat = BeatUs();
+  uint64_t elapsed = now - clockOriginUs;
+  return clockOriginUs + (elapsed / beat + 1) * beat;
+}
+
+void SC1000::SetBpm(uint16_t newBpm) {
+  // Keep the current position within the beat so the pulse doesn't jump
+  uint64_t now = MatrixOS::SYS::Micros();
+  uint32_t oldBeat = BeatUs();
+  double phase = (double)((now - clockOriginUs) % oldBeat) / oldBeat;
+  bpm = newBpm;
+  clockOriginUs = now - (uint64_t)(phase * BeatUs());
+}
+
+// ---------- Beat repeat ----------
+
+uint32_t SC1000::RepeatIntervalUs(uint8_t rate) {
+  return BeatUs() * 4 / rate; // rate 4 = quarter note = one beat
+}
+
+void SC1000::BeatRepeatPress(uint8_t deck, uint8_t rate) {
+  BeatRepeat& br = beatRepeat[deck];
+  br.heldRates.push_back(rate);
+  uint64_t now = MatrixOS::SYS::Micros();
+
+  if (br.started)
+  {
+    // Newest rate takes over from the last trigger
+    br.nextRepeatUs = br.lastTriggerUs + RepeatIntervalUs(rate);
+    return;
+  }
+  if (br.pending)
+    return;
+
+  if (brQuantize)
+  {
+    br.pending = true;
+    br.pendingStartUs = NextBeatUs(now);
+  }
+  else
+  {
+    BeatRepeatStart(deck, now);
+  }
+}
+
+void SC1000::BeatRepeatStart(uint8_t deck, uint64_t now) {
+  BeatRepeat& br = beatRepeat[deck];
+  br.pending = false;
+  br.started = true;
+  br.lastTriggerUs = now;
+  br.nextRepeatUs = now + RepeatIntervalUs(br.heldRates.back());
+  Queue(MidiPacket::NoteOn(deck, CUE_BEAT_REPEAT, 127)); // Empty cue: this sets it here
+}
+
+void SC1000::BeatRepeatRelease(uint8_t deck, uint8_t rate) {
+  BeatRepeat& br = beatRepeat[deck];
+  for (auto it = br.heldRates.begin(); it != br.heldRates.end(); ++it)
+  {
+    if (*it == rate)
+    {
+      br.heldRates.erase(it);
+      break;
+    }
+  }
+
+  if (!br.heldRates.empty())
+  {
+    if (br.started)
+      br.nextRepeatUs = br.lastTriggerUs + RepeatIntervalUs(br.heldRates.back());
+    return;
+  }
+
+  if (br.started)
+  {
+    // Delete the scratch cue so the next press captures a new position
+    Queue(MidiPacket::NoteOn(CH_CONTROL, NOTE_SHIFT, 127));
+    Queue(MidiPacket::NoteOn(deck, CUE_BEAT_REPEAT, 127));
+    Queue(MidiPacket::NoteOff(CH_CONTROL, NOTE_SHIFT, 0));
+  }
+  br.started = false;
+  br.pending = false;
+}
+
+void SC1000::BeatRepeatTick() {
+  uint64_t now = MatrixOS::SYS::Micros();
   for (uint8_t deck = 0; deck < 2; deck++)
   {
-    if (sentVolume[deck] >= 0 && sentVolume[deck] != volume[deck])
+    BeatRepeat& br = beatRepeat[deck];
+    if (br.pending && now >= br.pendingStartUs)
+      BeatRepeatStart(deck, br.pendingStartUs);
+
+    if (!br.started || now < br.nextRepeatUs)
+      continue;
+
+    Queue(MidiPacket::NoteOn(deck, CUE_BEAT_REPEAT, 127));
+    br.lastTriggerUs = br.nextRepeatUs;
+    br.nextRepeatUs += RepeatIntervalUs(br.heldRates.back());
+    if (now > br.nextRepeatUs) // Fell far behind: resync rather than burst
+      br.nextRepeatUs = now + RepeatIntervalUs(br.heldRates.back());
+  }
+}
+
+// ---------- Keys ----------
+
+static uint16_t AlignScale(uint16_t scale, uint8_t root) {
+  // Rotate the C-based scale mask to the key (same formula as NotePad::GenerateKeymap)
+  return ((scale << root) + ((scale & 0xFFF) >> (12 - root % 12))) & 0xFFF;
+}
+
+bool SC1000::IsKeyRoot(uint8_t note) {
+  return note % 12 == keyRoot.Get() % 12;
+}
+
+void SC1000::GenerateKeyMap() {
+  // One octave per row, like the Note app's octave layout. Middle row starts at the key root nearest the original pitch.
+  uint8_t root = keyRoot.Get() % 12;
+  uint16_t aligned = AlignScale(scale.Get(), root);
+  if (aligned == 0)
+    aligned = 0xFFF;
+  int16_t middleRoot = root <= 6 ? 60 + root : 48 + root;
+
+  for (uint8_t row = 0; row < 3; row++)
+  {
+    int16_t note = middleRoot + 12 * (1 - row); // Row 0 is the top: an octave up
+    for (uint8_t x = 0; x < 8; x++)
     {
-      SendSpaced(MidiPacket::ControlChange(deck, 0, volume[deck]));
-      sentVolume[deck] = volume[deck];
+      while (!bitRead(aligned, note % 12))
+        note++;
+      bool inRange = note >= SAMPLE_ORIGINAL_NOTE - KEY_RANGE && note <= SAMPLE_ORIGINAL_NOTE + KEY_RANGE && note <= 127;
+      keyMap[row][x] = inRange ? (uint8_t)note : 255;
+      note++;
     }
   }
 }
 
-// ---------- Input ----------
+// ---------- Actions ----------
 
-void SC1000::InputEventHandler(InputEvent& inputEvent) {
-  if (inputEvent.id == InputId::FunctionKey())
-  {
-    if (inputEvent.keypad.state == KeypadState::Hold)
-      Exit();
-    return;
-  }
-
-  Point xy;
-  if (!MatrixOS::Input::GetPosition(inputEvent.id, &xy))
-    return;
-  if (xy.x < 0 || xy.x >= 8 || xy.y < 0 || xy.y >= 8)
-    return;
-
-  PadEvent(xy, inputEvent.keypad);
+bool SC1000::ShiftHeld() {
+  return page == PAGE_MAIN && (held[0][7] || held[7][7]);
 }
 
-void SC1000::PadEvent(Point xy, KeypadInfo& keypad) {
-  KeypadState state = keypad.state;
-  if (state == KeypadState::Pressed)
-    held[xy.x][xy.y] = true;
-  else if (state == KeypadState::Released)
-    held[xy.x][xy.y] = false;
-
-  switch (xy.y)
-  {
-  case ROW_SAMPLE_CUES:
-  case ROW_SAMPLE_CUES + 1:
-    CuePad(DECK_SAMPLES, (xy.y - ROW_SAMPLE_CUES) * 8 + xy.x, state);
-    break;
-  case ROW_BEAT_CUES:
-    CuePad(DECK_BEATS, xy.x, state);
-    break;
-  case ROW_CUT:
-    CutPad(xy.x, keypad);
-    break;
-  case ROW_TRANSPORT:
-    TransportPad(xy.x, state);
-    break;
-  case ROW_PITCH:
-    PitchPad(xy.x, state);
-    break;
-  case ROW_BEATS_VOLUME:
-    VolumePad(DECK_BEATS, xy.x, state);
-    break;
-  case ROW_SAMPLES_VOLUME:
-    VolumePad(DECK_SAMPLES, xy.x, state);
-    break;
-  }
-}
-
-bool ShiftHeld(bool held[8][8]) {
-  return held[7][SC1000::ROW_TRANSPORT];
-}
-
-void SC1000::CuePad(uint8_t deck, uint8_t cue, KeypadState state) {
-  if (state != KeypadState::Pressed)
-    return; // The SC1000 ignores cue note-offs
-
-  if (ShiftHeld(held))
+void SC1000::CuePad(uint8_t deck, uint8_t cue) {
+  if (ShiftHeld())
   {
     // Delete the cue: SC1000 shift on, cue note, shift off
     Queue(MidiPacket::NoteOn(CH_CONTROL, NOTE_SHIFT, 127));
@@ -128,113 +212,8 @@ void SC1000::CuePad(uint8_t deck, uint8_t cue, KeypadState state) {
   cueSet[deck][cue] = true;
 }
 
-void SC1000::CutPad(uint8_t x, KeypadInfo& keypad) {
-  if (keypad.state == KeypadState::Released)
-  {
-    cutPressure[x] = 0;
-    if (cutMode == CUT_GATE)
-      gateClosed = true;
-  }
-  else if (keypad.state == KeypadState::Pressed || keypad.state == KeypadState::Aftertouch)
-  {
-    Fract16 pressure = keypad.pressure;
-    cutPressure[x] = pressure.to7bits();
-    if (cutPressure[x] == 0)
-      cutPressure[x] = 1; // Held pads always count as held
-  }
-  UpdateVolumeTargets();
-}
-
-void SC1000::TransportPad(uint8_t x, KeypadState state) {
-  if (state != KeypadState::Pressed)
-    return;
-
-  switch (x)
-  {
-  case 0:
-  case 1:
-    Queue(MidiPacket::NoteOn(CH_CONTROL, NOTE_STARTSTOP[x], 127));
-    break;
-  case 2:
-    Queue(MidiPacket::NoteOn(CH_CONTROL, NOTE_PREV_FILE[DECK_BEATS], 127));
-    ResetDeckMirror(DECK_BEATS);
-    break;
-  case 3:
-    Queue(MidiPacket::NoteOn(CH_CONTROL, NOTE_NEXT_FILE[DECK_BEATS], 127));
-    ResetDeckMirror(DECK_BEATS);
-    break;
-  case 4:
-    Queue(MidiPacket::NoteOn(CH_CONTROL, NOTE_PREV_FILE[DECK_SAMPLES], 127));
-    ResetDeckMirror(DECK_SAMPLES);
-    break;
-  case 5:
-    Queue(MidiPacket::NoteOn(CH_CONTROL, NOTE_NEXT_FILE[DECK_SAMPLES], 127));
-    ResetDeckMirror(DECK_SAMPLES);
-    break;
-  case 6:
-    if (ShiftHeld(held))
-    {
-      Queue(MidiPacket::NoteOn(CH_CONTROL, NOTE_RECORD, 127)); // Record sits behind shift
-    }
-    else
-    {
-      Queue(MidiPacket::NoteOn(CH_CONTROL, NOTE_RANDOM_SAMPLE, 127));
-      ResetDeckMirror(DECK_SAMPLES);
-    }
-    break;
-  case 7:
-    break; // App shift: local modifier only
-  }
-}
-
-void SC1000::PitchPad(uint8_t x, KeypadState state) {
-  if (state == KeypadState::Pressed)
-  {
-    nudgeHoldStart[x] = (uint32_t)MatrixOS::SYS::Millis();
-    nudgeLastRepeat[x] = nudgeHoldStart[x];
-  }
-  if (state != KeypadState::Pressed)
-    return;
-
-  switch (x)
-  {
-  case 0: Nudge(DECK_BEATS, -1); break;
-  case 1: SetPitch(DECK_BEATS, 0); break;
-  case 2: Nudge(DECK_BEATS, 1); break;
-  case 3: coarsePitch = !coarsePitch; break;
-  case 4: Nudge(DECK_SAMPLES, -1); break;
-  case 5: SetPitch(DECK_SAMPLES, 0); break;
-  case 6: Nudge(DECK_SAMPLES, 1); break;
-  case 7: SetCutMode(cutMode == CUT_GATE ? CUT_KILL : CUT_GATE); break;
-  }
-}
-
-void SC1000::HandleNudgeRepeat() {
-  static const uint8_t nudgePads[4] = {0, 2, 4, 6};
-  uint32_t now = (uint32_t)MatrixOS::SYS::Millis();
-  for (uint8_t x : nudgePads)
-  {
-    if (!held[x][ROW_PITCH])
-      continue;
-    if (now - nudgeHoldStart[x] < NUDGE_REPEAT_DELAY_MS || now - nudgeLastRepeat[x] < NUDGE_REPEAT_INTERVAL_MS)
-      continue;
-    nudgeLastRepeat[x] = now;
-    Nudge(x < 4 ? DECK_BEATS : DECK_SAMPLES, (x == 0 || x == 4) ? -1 : 1);
-  }
-}
-
-void SC1000::VolumePad(uint8_t deck, uint8_t x, KeypadState state) {
-  if (state != KeypadState::Pressed)
-    return;
-  volume[deck] = FaderLevel(x);
-  volumeKnown[deck] = true;
-  UpdateVolumeTargets();
-}
-
-// ---------- State ----------
-
 void SC1000::Nudge(uint8_t deck, int8_t direction) {
-  SetPitch(deck, pitch[deck] + direction * (coarsePitch ? PITCH_STEP_COARSE : PITCH_STEP_FINE));
+  SetPitch(deck, pitch[deck] + direction * PITCH_STEP);
 }
 
 void SC1000::SetPitch(uint8_t deck, int32_t value) {
@@ -249,47 +228,53 @@ void SC1000::SetPitch(uint8_t deck, int32_t value) {
   Queue(MidiPacket::PitchBend(deck, (uint16_t)bend));
 }
 
+void SC1000::ResetSamplePitch() {
+  SetPitch(DECK_SAMPLES, 0);
+  PlaySampleNote(SAMPLE_ORIGINAL_NOTE);
+}
+
+void SC1000::PlaySampleNote(uint8_t note) {
+  Queue(MidiPacket::NoteOn(CH_KEYS, note, 127));
+  sampleNote = note;
+}
+
+void SC1000::ChangeFile(uint8_t deck, bool next) {
+  Queue(MidiPacket::NoteOn(CH_CONTROL, next ? NOTE_NEXT_FILE[deck] : NOTE_PREV_FILE[deck], 127));
+  ResetDeckMirror(deck);
+}
+
 void SC1000::ResetDeckMirror(uint8_t deck) {
-  // Changing files on the SC1000 resets pitch, and loads cues we can't see
+  // Changing files on the SC1000 resets pitch and note, and loads cues we can't see
   pitch[deck] = 0;
+  if (deck == DECK_SAMPLES)
+    sampleNote = SAMPLE_ORIGINAL_NOTE;
   for (bool& cue : cueSet[deck])
     cue = false;
 }
 
-void SC1000::SetCutMode(uint8_t mode) {
-  cutMode = mode;
-  gateClosed = false; // Switching modes restores the stored level
-  UpdateVolumeTargets();
+int8_t SC1000::SpeedDirection(uint8_t deck) {
+  double speed = 1.0 + pitch[deck] / 10000.0;
+  if (deck == DECK_SAMPLES)
+    speed *= std::pow(2.0, (sampleNote - SAMPLE_ORIGINAL_NOTE) / 12.0);
+  if (std::fabs(speed - 1.0) < 1e-9)
+    return 0;
+  return speed < 1.0 ? -1 : 1;
 }
 
-void SC1000::UpdateVolumeTargets() {
-  uint8_t target[2] = {volume[DECK_BEATS], volume[DECK_SAMPLES]};
-
-  uint8_t maxPressure = 0;
-  for (uint8_t p : cutPressure)
-    maxPressure = p > maxPressure ? p : maxPressure;
-
-  if (maxPressure > 0)
+void SC1000::HandleNudgeRepeat() {
+  if (page != PAGE_MAIN)
+    return;
+  // Main row 6 (y = 5): SP- x0, SP+ x2, BP- x5, BP+ x7
+  static const uint8_t nudgePads[4] = {0, 2, 5, 7};
+  uint32_t now = (uint32_t)MatrixOS::SYS::Millis();
+  for (uint8_t x : nudgePads)
   {
-    if (cutMode == CUT_KILL)
-      target[DECK_SAMPLES] = 0;
-    else
-      target[DECK_SAMPLES] = pressureEnabled ? (uint8_t)((uint16_t)maxPressure * volume[DECK_SAMPLES] / 127) : volume[DECK_SAMPLES];
-  }
-  else if (cutMode == CUT_GATE && gateClosed)
-  {
-    target[DECK_SAMPLES] = 0;
-  }
-
-  // Only drive a deck's volume once the user has touched its fader or cut pads
-  bool touched[2] = {volumeKnown[DECK_BEATS], volumeKnown[DECK_SAMPLES] || maxPressure > 0 || gateClosed || sentVolume[DECK_SAMPLES] >= 0};
-
-  for (uint8_t deck = 0; deck < 2; deck++)
-  {
-    if (!touched[deck])
+    if (!held[x][5])
       continue;
-    targetVolume[deck] = target[deck];
-    volumeDirty[deck] = sentVolume[deck] != target[deck];
+    if (now - holdStartMs[x][5] < NUDGE_REPEAT_DELAY_MS || now - lastRepeatMs[x][5] < NUDGE_REPEAT_INTERVAL_MS)
+      continue;
+    lastRepeatMs[x][5] = now;
+    Nudge(x < 4 ? DECK_SAMPLES : DECK_BEATS, (x == 0 || x == 5) ? -1 : 1);
   }
 }
 
@@ -300,106 +285,18 @@ void SC1000::Queue(MidiPacket packet) {
 }
 
 void SC1000::FlushOutput() {
-  uint32_t now = (uint32_t)MatrixOS::SYS::Micros();
-  if (now - lastSendUs < MIN_SEND_GAP_US)
+  uint64_t now = MatrixOS::SYS::Micros();
+  if (outQueue.empty() || now - lastSendUs < MIN_SEND_GAP_US)
     return;
-
-  if (!outQueue.empty())
-  {
-    MatrixOS::MIDI::Send(outQueue.front(), MIDI_PORT_USB);
-    outQueue.pop_front();
-    lastSendUs = now;
-    return;
-  }
-
-  // Volume is sent as "latest value wins", so pressure changes never pile up
-  for (uint8_t i = 0; i < 2; i++)
-  {
-    uint8_t deck = (nextVolumeDeck + i) % 2;
-    if (!volumeDirty[deck])
-      continue;
-    MatrixOS::MIDI::Send(MidiPacket::ControlChange(deck, 0, targetVolume[deck]), MIDI_PORT_USB);
-    sentVolume[deck] = targetVolume[deck];
-    volumeDirty[deck] = false;
-    nextVolumeDeck = (deck + 1) % 2;
-    lastSendUs = now;
-    return;
-  }
+  MatrixOS::MIDI::Send(outQueue.front(), MIDI_PORT_USB);
+  outQueue.pop_front();
+  lastSendUs = now;
 }
 
 void SC1000::SendSpaced(MidiPacket packet) {
-  uint32_t elapsed = (uint32_t)MatrixOS::SYS::Micros() - lastSendUs;
+  uint64_t elapsed = MatrixOS::SYS::Micros() - lastSendUs;
   if (elapsed < MIN_SEND_GAP_US)
     MatrixOS::SYS::DelayMs((MIN_SEND_GAP_US - elapsed) / 1000 + 1);
   MatrixOS::MIDI::Send(packet, MIDI_PORT_USB);
-  lastSendUs = (uint32_t)MatrixOS::SYS::Micros();
-}
-
-// ---------- LEDs ----------
-
-uint8_t SC1000::FaderLevel(uint8_t x) {
-  return (uint8_t)((uint16_t)x * 127 / 7); // 0, 18, 36 ... 127
-}
-
-void SC1000::Render() {
-  bool shift = ShiftHeld(held);
-
-  for (uint8_t x = 0; x < 8; x++)
-  {
-    // Cue pads: dim = unknown, bright = set this session
-    for (uint8_t row = 0; row < 2; row++)
-    {
-      uint8_t cue = row * 8 + x;
-      Color c = cueSet[DECK_SAMPLES][cue] ? COLOR_SAMPLES : COLOR_SAMPLES.Dim(DIM);
-      if (shift)
-        c = cueSet[DECK_SAMPLES][cue] ? COLOR_RECORD : COLOR_RECORD.Dim(DIM);
-      MatrixOS::LED::SetColor(Point(x, ROW_SAMPLE_CUES + row), held[x][ROW_SAMPLE_CUES + row] ? COLOR_PRESS : c);
-    }
-    Color beatCue = cueSet[DECK_BEATS][x] ? COLOR_BEATS : COLOR_BEATS.Dim(DIM);
-    if (shift)
-      beatCue = cueSet[DECK_BEATS][x] ? COLOR_RECORD : COLOR_RECORD.Dim(DIM);
-    MatrixOS::LED::SetColor(Point(x, ROW_BEAT_CUES), held[x][ROW_BEAT_CUES] ? COLOR_PRESS : beatCue);
-
-    // Cut pads: brightness follows pressure while held
-    Color cut = cutMode == CUT_GATE ? COLOR_GATE : COLOR_KILL;
-    MatrixOS::LED::SetColor(Point(x, ROW_CUT), cutPressure[x] ? cut : cut.Dim(DIM));
-
-    // Volume faders
-    for (uint8_t deck = 0; deck < 2; deck++)
-    {
-      uint8_t row = deck == DECK_BEATS ? ROW_BEATS_VOLUME : ROW_SAMPLES_VOLUME;
-      Color deckColor = deck == DECK_BEATS ? COLOR_BEATS : COLOR_SAMPLES;
-      bool lit = volumeKnown[deck] && FaderLevel(x) <= volume[deck] && (x > 0 || volume[deck] == 0);
-      MatrixOS::LED::SetColor(Point(x, row), lit ? deckColor : deckColor.Dim(volumeKnown[deck] ? 16 : DIM));
-    }
-  }
-
-  // Transport
-  MatrixOS::LED::SetColor(Point(0, ROW_TRANSPORT), COLOR_BEATS);
-  MatrixOS::LED::SetColor(Point(1, ROW_TRANSPORT), COLOR_SAMPLES);
-  MatrixOS::LED::SetColor(Point(2, ROW_TRANSPORT), COLOR_BEATS.Dim(DIM));
-  MatrixOS::LED::SetColor(Point(3, ROW_TRANSPORT), COLOR_BEATS.Dim(DIM));
-  MatrixOS::LED::SetColor(Point(4, ROW_TRANSPORT), COLOR_SAMPLES.Dim(DIM));
-  MatrixOS::LED::SetColor(Point(5, ROW_TRANSPORT), COLOR_SAMPLES.Dim(DIM));
-  MatrixOS::LED::SetColor(Point(6, ROW_TRANSPORT), shift ? COLOR_RECORD : COLOR_CONTROL.Dim(DIM));
-  MatrixOS::LED::SetColor(Point(7, ROW_TRANSPORT), shift ? COLOR_SHIFT : COLOR_SHIFT.Dim(DIM));
-  for (uint8_t x = 0; x < 6; x++)
-  {
-    if (held[x][ROW_TRANSPORT])
-      MatrixOS::LED::SetColor(Point(x, ROW_TRANSPORT), COLOR_PRESS);
-  }
-
-  // Pitch: reset pads turn amber when the deck is detuned
-  for (uint8_t deck = 0; deck < 2; deck++)
-  {
-    uint8_t base = deck == DECK_BEATS ? 0 : 4;
-    Color deckColor = deck == DECK_BEATS ? COLOR_BEATS : COLOR_SAMPLES;
-    MatrixOS::LED::SetColor(Point(base, ROW_PITCH), held[base][ROW_PITCH] ? COLOR_PRESS : deckColor.Dim(DIM));
-    MatrixOS::LED::SetColor(Point(base + 1, ROW_PITCH), pitch[deck] == 0 ? COLOR_CONTROL.Dim(DIM) : COLOR_DETUNED);
-    MatrixOS::LED::SetColor(Point(base + 2, ROW_PITCH), held[base + 2][ROW_PITCH] ? COLOR_PRESS : deckColor.Dim(DIM));
-  }
-  MatrixOS::LED::SetColor(Point(3, ROW_PITCH), coarsePitch ? COLOR_CONTROL : COLOR_CONTROL.Dim(DIM));
-  MatrixOS::LED::SetColor(Point(7, ROW_PITCH), cutMode == CUT_GATE ? COLOR_GATE : COLOR_KILL);
-
-  MatrixOS::LED::Update();
+  lastSendUs = MatrixOS::SYS::Micros();
 }

@@ -10,7 +10,6 @@ const Color COLOR_SAMPLES_REPEAT = Color(0x4A20FF);
 const Color COLOR_BEATS_REPEAT = Color(0x70FF00);
 const Color COLOR_SHIFT = Color(0xFF3090);
 const Color COLOR_DELETE = Color(0xFF0000);
-const Color COLOR_NAV = Color(0xFFFFFF);
 const Color COLOR_EXIT = Color(0xFF0000);
 const Color COLOR_BPM = Color(0xFF8000);
 const Color COLOR_SCALE = Color(0xFFE000);
@@ -33,7 +32,7 @@ void SC1000::InputEventHandler(InputEvent& inputEvent) {
     if (inputEvent.keypad.state == KeypadState::Hold)
       Exit();
     else if (inputEvent.keypad.state == KeypadState::Released && !inputEvent.keypad.hold)
-      page = PAGE_MAIN; // Tap: back to the main page
+      page = page == PAGE_MAIN ? PAGE_SETTINGS : PAGE_MAIN; // Tap: Main opens Settings, other pages go back to Main
     return;
   }
 
@@ -134,9 +133,7 @@ void SC1000::MainEvent(Point xy, KeypadState state) {
   }
   else if (xy.y == 7)
   {
-    if (xy.x == 3 || xy.x == 4)
-      page = PAGE_SETTINGS;
-    else if (xy.x == 5)
+    if (xy.x == 5)
       page = PAGE_PERFORM;
   }
 }
@@ -269,12 +266,10 @@ void SC1000::RenderMain() {
     }
   }
 
-  // Bottom row: shift, settings, perform
+  // Bottom row: shift, perform (the function key opens Settings)
   bool shift = ShiftHeld();
   MatrixOS::LED::SetColor(Point(0, 7), Pad(COLOR_SHIFT, shift, Point(0, 7)));
   MatrixOS::LED::SetColor(Point(7, 7), Pad(COLOR_SHIFT, shift, Point(7, 7)));
-  MatrixOS::LED::SetColor(Point(3, 7), Pad(COLOR_NAV, false, Point(3, 7)));
-  MatrixOS::LED::SetColor(Point(4, 7), Pad(COLOR_NAV, false, Point(4, 7)));
   MatrixOS::LED::SetColor(Point(5, 7), Pad(COLOR_PERFORM, true, Point(5, 7)));
 }
 

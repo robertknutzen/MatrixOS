@@ -97,10 +97,7 @@ bool SC1000::TopRowsEvent(Point xy, KeypadState state) {
   }
   else
   {
-    if (state == KeypadState::Pressed)
-      BeatRepeatPress(deck, REPEAT_RATES[column]);
-    else
-      BeatRepeatRelease(deck, REPEAT_RATES[column]);
+    BeatRepeatPad(deck, column, state);
   }
   return true;
 }
@@ -203,7 +200,8 @@ Color SC1000::Pad(Color color, bool bright, Point xy) {
 
 Color SC1000::Pulse(Color color, uint8_t rate, Point xy) {
   // Fades from bright to dim over each repeat interval of the internal clock
-  if (held[xy.x][xy.y])
+  uint8_t deck = xy.x < 4 ? DECK_SAMPLES : DECK_BEATS;
+  if (held[xy.x][xy.y] || latchedRate[deck] == rate)
     return color;
   uint32_t interval = RepeatIntervalUs(rate);
   uint32_t phase = (uint32_t)((MatrixOS::SYS::Micros() - clockOriginUs) % interval);
@@ -291,6 +289,10 @@ void SC1000::RenderSettings() {
 
 void SC1000::RenderPerform() {
   RenderTopRows();
+
+  bool shift = ShiftHeld();
+  MatrixOS::LED::SetColor(Point(0, 3), Pad(COLOR_SHIFT, shift, Point(0, 3)));
+  MatrixOS::LED::SetColor(Point(7, 3), Pad(COLOR_SHIFT, shift, Point(7, 3)));
 
   MatrixOS::LED::SetColor(Point(0, 4), Pad(COLOR_ORIGINAL_PITCH, sampleNote == SAMPLE_ORIGINAL_NOTE, Point(0, 4)));
 

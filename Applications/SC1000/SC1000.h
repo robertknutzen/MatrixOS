@@ -92,6 +92,9 @@ private:
     uint64_t nextRepeatUs = 0;
   };
   BeatRepeat beatRepeat[2];
+  uint8_t latchedRate[2] = {0, 0};        // Rate latched with shift, 0 = none
+  bool ignoreRelease[2][4] = {};          // Pad press was a latch toggle; its release does nothing
+  void BeatRepeatPad(uint8_t deck, uint8_t column, KeypadState state);
   uint32_t RepeatIntervalUs(uint8_t rate);
   void BeatRepeatPress(uint8_t deck, uint8_t rate);
   void BeatRepeatRelease(uint8_t deck, uint8_t rate);

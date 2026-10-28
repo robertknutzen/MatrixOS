@@ -76,6 +76,44 @@ uint32_t SC1000::RepeatIntervalUs(uint8_t rate) {
   return BeatUs() * 4 / rate; // rate 4 = quarter note = one beat
 }
 
+void SC1000::BeatRepeatPad(uint8_t deck, uint8_t column, KeypadState state) {
+  static const uint8_t rates[4] = {4, 8, 16, 32};
+  uint8_t rate = rates[column];
+  uint8_t latched = latchedRate[deck];
+
+  if (state == KeypadState::Released)
+  {
+    if (ignoreRelease[deck][column])
+      ignoreRelease[deck][column] = false;
+    else
+      BeatRepeatRelease(deck, rate);
+    return;
+  }
+
+  if (latched == rate)
+  {
+    // Pressing the latched pad again stops it
+    latchedRate[deck] = 0;
+    ignoreRelease[deck][column] = true;
+    BeatRepeatRelease(deck, rate);
+    return;
+  }
+
+  // New rate takes over first, then the old latch is dropped, so the repeat keeps its captured position
+  BeatRepeatPress(deck, rate);
+  if (latched)
+  {
+    latchedRate[deck] = 0;
+    BeatRepeatRelease(deck, latched);
+  }
+
+  if (ShiftHeld())
+  {
+    latchedRate[deck] = rate;
+    ignoreRelease[deck][column] = true;
+  }
+}
+
 void SC1000::BeatRepeatPress(uint8_t deck, uint8_t rate) {
   BeatRepeat& br = beatRepeat[deck];
   br.heldRates.push_back(rate);
@@ -194,7 +232,12 @@ void SC1000::GenerateKeyMap() {
 // ---------- Actions ----------
 
 bool SC1000::ShiftHeld() {
-  return page == PAGE_MAIN && (held[0][7] || held[7][7]);
+  // Main: row 8, columns 1 and 8. Perform: row 4, columns 1 and 8
+  if (page == PAGE_MAIN)
+    return held[0][7] || held[7][7];
+  if (page == PAGE_PERFORM)
+    return held[0][3] || held[7][3];
+  return false;
 }
 
 void SC1000::CuePad(uint8_t deck, uint8_t cue) {

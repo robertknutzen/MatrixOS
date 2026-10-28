@@ -31,6 +31,8 @@ public:
   // Channel 5 control notes, indexed by deck
   static constexpr uint8_t NOTE_NEXT_FILE[2] = {2, 3};
   static constexpr uint8_t NOTE_PREV_FILE[2] = {6, 7};
+  static constexpr uint8_t NOTE_NEXT_FOLDER[2] = {4, 5};
+  static constexpr uint8_t NOTE_PREV_FOLDER[2] = {8, 9};
   static constexpr uint8_t NOTE_SHIFT = 127;
 
   static constexpr uint8_t CUE_BEAT_REPEAT = 65; // Scratch cue, never set by the cue pads
@@ -39,6 +41,9 @@ public:
 
   // The SC1000 holds one pending MIDI command, so space messages out
   static constexpr uint32_t MIN_SEND_GAP_US = 5000;
+
+  // The launcher opens apps on release; ignore the bounce of that pad as the finger lifts
+  static constexpr uint32_t LAUNCH_IGNORE_MS = 250;
 
   // Pitch is tracked in hundredths of a percent; must match scsettings pitchrange
   static constexpr int32_t PITCH_RANGE = 50 * 100;
@@ -60,6 +65,7 @@ private:
   CreateSavedVar("SC1000", brQuantize, bool, false);
 
   Page page = PAGE_MAIN;
+  uint32_t launchMs = 0;
   Timer renderTimer;
   bool held[8][8] = {};
   uint32_t holdStartMs[8][8] = {};

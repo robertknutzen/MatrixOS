@@ -6,6 +6,7 @@ void SC1000::Setup(const vector<string>& args) {
   uint64_t now = MatrixOS::SYS::Micros();
   lastSendUs = now;
   clockOriginUs = now;
+  launchMs = (uint32_t)MatrixOS::SYS::Millis();
   GenerateKeyMap();
 }
 
@@ -239,7 +240,10 @@ void SC1000::PlaySampleNote(uint8_t note) {
 }
 
 void SC1000::ChangeFile(uint8_t deck, bool next) {
-  Queue(MidiPacket::NoteOn(CH_CONTROL, next ? NOTE_NEXT_FILE[deck] : NOTE_PREV_FILE[deck], 127));
+  // Shift moves between folders instead of files
+  uint8_t note = ShiftHeld() ? (next ? NOTE_NEXT_FOLDER[deck] : NOTE_PREV_FOLDER[deck])
+                             : (next ? NOTE_NEXT_FILE[deck] : NOTE_PREV_FILE[deck]);
+  Queue(MidiPacket::NoteOn(CH_CONTROL, note, 127));
   ResetDeckMirror(deck);
 }
 

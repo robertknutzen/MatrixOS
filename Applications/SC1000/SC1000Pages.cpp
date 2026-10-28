@@ -47,6 +47,12 @@ void SC1000::InputEventHandler(InputEvent& inputEvent) {
 }
 
 void SC1000::PadEvent(Point xy, KeypadState state) {
+  if (state == KeypadState::Pressed && (uint32_t)MatrixOS::SYS::Millis() - launchMs < LAUNCH_IGNORE_MS)
+    return; // Leftover bounce from the launcher icon; its release is ignored too since held stays false
+
+  if (state == KeypadState::Released && !held[xy.x][xy.y])
+    return;
+
   if (state == KeypadState::Pressed)
   {
     held[xy.x][xy.y] = true;
@@ -108,10 +114,10 @@ void SC1000::MainEvent(Point xy, KeypadState state) {
   {
     switch (xy.x)
     {
-    case 0: ChangeFile(DECK_BEATS, false); break;
-    case 2: ChangeFile(DECK_BEATS, true); break;
-    case 5: ChangeFile(DECK_SAMPLES, false); break;
-    case 7: ChangeFile(DECK_SAMPLES, true); break;
+    case 0: ChangeFile(DECK_SAMPLES, false); break;
+    case 2: ChangeFile(DECK_SAMPLES, true); break;
+    case 5: ChangeFile(DECK_BEATS, false); break;
+    case 7: ChangeFile(DECK_BEATS, true); break;
     }
   }
   else if (xy.y == 5)
@@ -243,11 +249,12 @@ void SC1000::RenderTopRows() {
 void SC1000::RenderMain() {
   RenderTopRows();
 
-  // File navigation
-  MatrixOS::LED::SetColor(Point(0, 4), Pad(COLOR_BEATS, false, Point(0, 4)));
-  MatrixOS::LED::SetColor(Point(2, 4), Pad(COLOR_BEATS, false, Point(2, 4)));
-  MatrixOS::LED::SetColor(Point(5, 4), Pad(COLOR_SAMPLES, false, Point(5, 4)));
-  MatrixOS::LED::SetColor(Point(7, 4), Pad(COLOR_SAMPLES, false, Point(7, 4)));
+  // File navigation (samples left, beats right); brighter while shift selects folders instead
+  bool folders = ShiftHeld();
+  MatrixOS::LED::SetColor(Point(0, 4), Pad(COLOR_SAMPLES, folders, Point(0, 4)));
+  MatrixOS::LED::SetColor(Point(2, 4), Pad(COLOR_SAMPLES, folders, Point(2, 4)));
+  MatrixOS::LED::SetColor(Point(5, 4), Pad(COLOR_BEATS, folders, Point(5, 4)));
+  MatrixOS::LED::SetColor(Point(7, 4), Pad(COLOR_BEATS, folders, Point(7, 4)));
 
   // Pitch: the brighter pad of each trio shows whether the deck plays slower, normal or faster
   for (uint8_t deck = 0; deck < 2; deck++)

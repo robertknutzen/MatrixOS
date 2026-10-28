@@ -2,6 +2,23 @@
 
 <https://github.com/203-Systems/MatrixOS.git>Oct 23, 2026 · @b0b
 
+> **Status (Oct 28, 2026):** this is the original spec, kept for its research.
+>
+> **Superseded:** the app was built with the owner's own layout instead of section 3. The current controls are in `Applications/SC1000/README.md`.
+>
+> **Still accurate and useful:**
+> - Section 1 (SC1000 MIDI)
+> - Section 2 (hookup)
+> - Section 5 (extended map)
+> - Phase 2
+> - The sample prep script
+>
+> **Dropped from section 3:** cut pads, volume faders, start/stop, random, record and the sample-root setting.
+>
+> **Milestones:**
+> - Done: 1–5.
+> - Still open: 6 (testing on a real SC1000), Phase 2 and the sample prep script.
+
 A plan for Claude Code to build a Matrix OS app ("SC1000") that turns the Mystrix Pro into a one-way MIDI controller for the Portablism SC1000/SC500. No code here — just the spec, the verified MIDI implementation, and milestones.
 
 ## 1. What the SC1000 actually does with MIDI

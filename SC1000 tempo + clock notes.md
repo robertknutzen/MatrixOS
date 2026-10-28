@@ -39,7 +39,7 @@ Hold a pad to capture the deck's position into scratch cue 65 and jump back to i
 ## Known limits
 - **Not phase-aligned with the track.** The internal clock isn't phase-aligned with whatever the SC1000 is playing. The pulse and BR_Q beats won't land on the track's downbeat.
 - **Shift is shared.** The cue delete uses the SC1000's global shift, which it shares with the hardware shift button.
-- **Stick writes.** Each set and delete rewrites the track's `.cue` file on the SC1000's USB stick. Listen for glitches when testing on the real unit.
+- **Stick writes.** Each set and delete rewrites the track's `.cue` file on the SC1000's USB stick.
 
 ## Ideas not built
 - **Downbeat sync pad:** tap it on the track's "1" to re-anchor `clockOriginUs`, so the pulse and BR_Q line up with the music.

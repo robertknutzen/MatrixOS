@@ -4,7 +4,7 @@ A one-way USB MIDI controller for the Portablism SC1000/SC500. It targets the de
 
 - Plug the Mystrix into the SC1000's USB host port before powering the SC1000 on. The SC1000 only scans for MIDI devices at boot.
 - The SC1000 never sends anything back, so the app keeps its own record of which cues are set and where the pitch is.
-- Status: built and checked with a MIDI monitor. **Not yet tested on a real SC1000.**
+- Status: tested and working on a real SC1000.
 
 Rows and columns below are 1-based, counted from the top-left.
 

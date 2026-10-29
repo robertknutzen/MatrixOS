@@ -35,6 +35,7 @@ Strum
 Companion
 Developer
 SC1000
+# ChordMachine  # Disabled: Syntakt won't record external CC/NRPN as grid locks. Code kept in Applications/ChordMachine
 # PolyPlayground
 [System]Python
 

@@ -25,6 +25,7 @@ const Color COLOR_REC = Color(0xFF0000);
 const Color COLOR_REC_ARMED = Color(0xFFE000);
 const Color COLOR_UNDO = Color(0x00FF40);
 const Color COLOR_LOAD = Color(0x3050FF);
+const Color COLOR_PLAY = Color(0x00FF40);
 
 const uint8_t DIM = 30;     // Unselected options, idle pads
 const uint8_t BRIGHT = 150; // Selected options
@@ -235,6 +236,10 @@ void Breakbeat::SettingsEvent(Point xy, KeypadState state) {
   case 4:
     set(CC_CRUSH, OptionValue(xy.x, 8));
     break;
+  case 5:
+    if (xy.x == 0)
+      set(CC_TRANSPORT, cc[CC_TRANSPORT] >= 64 ? 0 : 127); // toggle play / stop
+    break;
   case 6:
     if (xy.x <= 1)
       set(CC_REC_MODE, OptionValue(xy.x, 2));
@@ -348,6 +353,9 @@ void Breakbeat::RenderSettings() {
     bool on = x == 0 ? crush == 0 : OptionValue(x, 8) <= crush;
     MatrixOS::LED::SetColor(xy, Lit(x == 0 ? COLOR_FILTER_OFF : COLOR_CRUSH, on, xy));
   }
+
+  // Row 6: play / stop (bright green while playing)
+  MatrixOS::LED::SetColor(Point(0, 5), Lit(COLOR_PLAY, cc[CC_TRANSPORT] >= 64, Point(0, 5)));
 
   // Row 7: record mode, record length (clock mode)
   for (uint8_t i = 0; i < 2; i++)

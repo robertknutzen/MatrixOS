@@ -39,6 +39,7 @@ public:
   static constexpr uint8_t CC_PANIC = 85;
   static constexpr uint8_t CC_REFRESH = 86;
   static constexpr uint8_t CC_ALIVE = 87;   // keep-alive: the sampler only sends feedback while this arrives
+  static constexpr uint8_t CC_TRANSPORT = 88; // 127 play from the top, 0 stop; echoed back
   static constexpr uint8_t CC_REC_STATE = 90; // feedback only
 
   // Pad LED states sent by the sampler

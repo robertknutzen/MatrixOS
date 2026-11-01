@@ -22,6 +22,7 @@ The whole 8×8 grid is the loop's slices. Pad n (left→right, top→bottom) sen
 | All dim white | No feedback from the sampler yet. The pads still work |
 
 - Press = jump to the slice; hold = repeat it; release = back to the playhead.
+- While the sampler is stopped the pads do nothing and no playhead is lit. Start it from the Settings page (row 6), the touchscreen, MIDI Start (e.g. the Elektron's play button) or note 34.
 - **Function key:** tap to open Settings, hold to exit the app.
 
 ## Settings page (tap the function key)
@@ -33,7 +34,7 @@ The whole 8×8 grid is the loop's slices. Pad n (left→right, top→bottom) sen
 | 3 | FOLLOW REAL TIME (col 1) · QUANTIZE (col 2), orange toggles · PANIC (col 8, red) |
 | 4 | DJ FILTER: cols 1–3 low-pass strong→light, cols 4–5 off (white), cols 6–8 high-pass light→strong |
 | 5 | BIT CRUSH: col 1 off, cols 2–8 more and more crush (lit as a bar) |
-| 6 | — |
+| 6 | PLAY / STOP (col 1, green): bright while playing. Play starts from the top of the loop |
 | 7 | REC MODE clock · manual (cols 1–2, red) · REC BARS 1–4 for clock mode (cols 5–8, blue) |
 | 8 | REC (col 1) · UNDO (col 3, green) · PREV / NEXT loop (cols 6–7, blue) |
 
@@ -56,6 +57,7 @@ The whole 8×8 grid is the loop's slices. Pad n (left→right, top→bottom) sen
 | Slice pads | Note on / off, notes 36–99 |
 | Settings | CC 20–27, 74, 75 with the values in the spec |
 | Actions | CC 80–85 (value 127) |
+| Play / stop | CC 88: 127 play from the top, 0 stop |
 | Refresh request | CC 86, sent on launch and every 2 s until the sampler answers |
 | Keep-alive | CC 87 = 127 every second while the app is open; 0 on exit |
 
@@ -63,6 +65,7 @@ The whole 8×8 grid is the loop's slices. Pad n (left→right, top→bottom) sen
 |---|---|
 | Note on 36–99, velocity 0–4 | Pad LED state (0 off, 1 slice, 2 playhead, 3 held, 4 queued) |
 | CC 20–27, 74, 75 | Settings mirror |
+| CC 88 | Playing or stopped |
 | CC 90 | Record state |
 
 - Sent on the USB port only.

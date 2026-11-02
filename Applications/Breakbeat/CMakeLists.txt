@@ -1,4 +1,4 @@
-# Breakbeat: grid controller for the rpi-sampler breakbeat track
+# Breakbeat: grid controller for the slompler breakbeat track
 file(GLOB_RECURSE BREAKBEAT_SOURCES "*.cpp" "*.c")
 file(GLOB_RECURSE BREAKBEAT_HEADERS "*.h")
 

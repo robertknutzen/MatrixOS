@@ -1,8 +1,8 @@
 # Breakbeat app for the Mystrix Pro
 
-A grid controller for the breakbeat track of **rpi-sampler**, the Raspberry Pi sampler in `~/code/rpi`. The Mystrix sends notes and CCs, and the sampler sends back pad LED states and its current settings. Both sides follow `docs/midi-spec.md` in the rpi-sampler repo.
+A grid controller for the breakbeat track of **slompler**, the Raspberry Pi sampler in `~/code/slompler`. The Mystrix sends notes and CCs, and the sampler sends back pad LED states and its current settings. Both sides follow `docs/midi-spec.md` in the slompler repo.
 
-- Plug the Mystrix into the Pi (or the computer running rpi-sampler) over USB.
+- Plug the Mystrix into the Pi (or the computer running slompler) over USB.
 - The sampler connects to it automatically and sends LED feedback only to MIDI ports with "Mystrix" in the name. Change this with `feedback.ports` in `midi_map.toml`.
 - Everything is on MIDI channel 1.
 

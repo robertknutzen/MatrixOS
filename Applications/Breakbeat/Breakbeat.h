@@ -1,5 +1,5 @@
-// Breakbeat: grid controller for the rpi-sampler breakbeat track (Raspberry Pi sampler).
-// The MIDI contract is docs/midi-spec.md in the rpi-sampler repo; the numbers below must match it.
+// Breakbeat: grid controller for the slompler breakbeat track (Raspberry Pi sampler).
+// The MIDI contract is docs/midi-spec.md in the slompler repo; the numbers below must match it.
 //
 // Play page: the 8x8 grid is the loop's 64 slices. Pads light from the sampler's feedback.
 // Settings page (tap the function key): every setting and action as pads.

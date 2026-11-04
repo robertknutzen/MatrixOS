@@ -22,7 +22,7 @@ The whole 8×8 grid is the loop's slices. Pad n (left→right, top→bottom) sen
 | All dim white | No feedback from the sampler yet. The pads still work |
 
 - Press = jump to the slice; hold = repeat it; release = back to the playhead.
-- While the sampler is stopped the pads do nothing and no playhead is lit. Start it from the Settings page (row 6), the touchscreen, MIDI Start (e.g. the Elektron's play button) or note 34.
+- While the sampler is stopped, holding a pad auditions its slice (lit as held); no playhead is lit. Start it from the Settings page (row 6), the touchscreen, MIDI Start (e.g. the Elektron's play button) or note 34.
 - **Function key:** tap to open Settings, hold to exit the app.
 
 ## Settings page (tap the function key)

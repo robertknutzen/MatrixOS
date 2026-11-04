@@ -2,7 +2,8 @@
 // The MIDI contract is docs/midi-spec.md in the slompler repo; the numbers below must match it.
 //
 // Play page: the 8x8 grid is the loop's 64 slices. Pads light from the sampler's feedback.
-// Settings page (tap the function key): every setting and action as pads.
+// Settings page (tap the function key): every setting and action as pads, plus which
+// sampler track (MIDI channel 1-7) the app controls.
 // Side touch strips (both pages): punch-in slice FX for held slices while touched,
 // upper half = reverse, lower half = ping-pong.
 #pragma once
@@ -21,7 +22,9 @@ public:
   };
 
   // ---- MIDI contract (docs/midi-spec.md) ----
-  static constexpr uint8_t CHANNEL = 0;     // 0-based: MIDI channel 1
+  // Track = MIDI channel. Saved, 0-based (0 = channel 1); the settings page offers 1-7.
+  CreateSavedVar("Breakbeat", channel, uint8_t, 0);
+  static constexpr uint8_t CHANNELS = 7;
   static constexpr uint8_t FIRST_NOTE = 36; // slice 0; slice = note - 36
   static constexpr uint8_t CC_SLICE_RES = 20;
   static constexpr uint8_t CC_BARS = 21;
@@ -90,6 +93,9 @@ private:
   void HandleMidi(const MidiPacket& packet);
   void RequestRefresh();
   void ReleaseAllSlices();
+  uint8_t Ch() { return channel.Get() < CHANNELS ? channel.Get() : 0; }
+  void SetChannel(uint8_t ch);
+  void ResetMirror();
   void StripEvent(Point xy, KeypadState state);
   bool ZoneTouched(int8_t zone);
   void SendPunch();

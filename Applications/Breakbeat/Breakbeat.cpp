@@ -26,6 +26,7 @@ const Color COLOR_REC_ARMED = Color(0xFFE000);
 const Color COLOR_UNDO = Color(0x00FF40);
 const Color COLOR_LOAD = Color(0x3050FF);
 const Color COLOR_PLAY = Color(0x00FF40);
+const Color COLOR_CHANNEL = Color(0x00E0FF);
 
 const uint8_t DIM = 30;     // Unselected options, idle pads
 const uint8_t BRIGHT = 150; // Selected options
@@ -37,11 +38,7 @@ const uint8_t FILTER_VALUES[8] = {0, 21, 42, 64, 64, 85, 106, 127};
 void Breakbeat::Setup(const vector<string>& args) {
   MatrixOS::LED::Fill(Color(0));
   launchMs = (uint32_t)MatrixOS::SYS::Millis();
-  // Defaults until the sampler reports its settings
-  cc[CC_SLICE_RES] = 127;
-  cc[CC_FOLLOW] = 127;
-  cc[CC_QUANTIZE] = 127;
-  cc[CC_FILTER] = 64;
+  ResetMirror();
 #ifdef FAMILY_MYSTRIX
   Device::touchbarEnable.TempSet(true); // the side strips punch in slice FX
 #endif
@@ -78,6 +75,35 @@ void Breakbeat::Loop() {
     Render();
 }
 
+// Forget what the sampler last told us (a new track, or nothing heard yet).
+void Breakbeat::ResetMirror() {
+  memset(led, 0, sizeof(led));
+  memset(cc, 0, sizeof(cc));
+  // Defaults until the sampler reports its settings
+  cc[CC_SLICE_RES] = 127;
+  cc[CC_FOLLOW] = 127;
+  cc[CC_QUANTIZE] = 127;
+  cc[CC_FILTER] = 64;
+  connected = false;
+}
+
+// Switch to another track (MIDI channel): let go of everything on the old one first.
+void Breakbeat::SetChannel(uint8_t ch) {
+  if (ch >= CHANNELS || ch == Ch())
+    return;
+  ReleaseAllSlices();
+  if (punchSent)
+    SendCC(CC_FX_PUNCH, 0);
+  punchSent = 0;
+  SendCC(CC_ALIVE, 0);
+  channel = ch; // saved, so the app reopens on this track
+  ResetMirror();
+  SendCC(CC_ALIVE, 127);
+  lastAliveMs = (uint32_t)MatrixOS::SYS::Millis();
+  RequestRefresh();
+  SendPunch(); // a strip still being touched carries over
+}
+
 void Breakbeat::End() {
   // Don't leave slices stuck on the sampler, and stop its feedback right away
   ReleaseAllSlices();
@@ -96,7 +122,7 @@ void Breakbeat::Send(MidiPacket packet) {
 }
 
 void Breakbeat::SendCC(uint8_t controller, uint8_t value) {
-  Send(MidiPacket::ControlChange(CHANNEL, controller, value));
+  Send(MidiPacket::ControlChange(Ch(), controller, value));
 }
 
 void Breakbeat::RequestRefresh() {
@@ -105,7 +131,7 @@ void Breakbeat::RequestRefresh() {
 }
 
 void Breakbeat::HandleMidi(const MidiPacket& packet) {
-  if (packet.Channel() != CHANNEL)
+  if (packet.Channel() != Ch())
     return;
   switch (packet.Status())
   {
@@ -136,7 +162,7 @@ void Breakbeat::ReleaseAllSlices() {
     for (uint8_t x = 0; x < 8; x++)
     {
       if (page == PAGE_PLAY && held[x][y])
-        Send(MidiPacket::NoteOff(CHANNEL, FIRST_NOTE + y * 8 + x, 0));
+        Send(MidiPacket::NoteOff(Ch(), FIRST_NOTE + y * 8 + x, 0));
       held[x][y] = false;
     }
   }
@@ -250,9 +276,9 @@ void Breakbeat::SendPunch() {
 void Breakbeat::PlayEvent(Point xy, KeypadState state) {
   uint8_t note = FIRST_NOTE + xy.y * 8 + xy.x;
   if (state == KeypadState::Pressed)
-    Send(MidiPacket::NoteOn(CHANNEL, note, 127));
+    Send(MidiPacket::NoteOn(Ch(), note, 127));
   else
-    Send(MidiPacket::NoteOff(CHANNEL, note, 0));
+    Send(MidiPacket::NoteOff(Ch(), note, 0));
 }
 
 void Breakbeat::SettingsEvent(Point xy, KeypadState state) {
@@ -296,6 +322,8 @@ void Breakbeat::SettingsEvent(Point xy, KeypadState state) {
   case 5:
     if (xy.x == 0)
       set(CC_TRANSPORT, cc[CC_TRANSPORT] >= 64 ? 0 : 127); // toggle play / stop
+    else
+      SetChannel(xy.x - 1); // cols 2-8: track on MIDI channel 1-7
     break;
   case 6:
     if (xy.x <= 1)
@@ -411,8 +439,10 @@ void Breakbeat::RenderSettings() {
     MatrixOS::LED::SetColor(xy, Lit(x == 0 ? COLOR_FILTER_OFF : COLOR_CRUSH, on, xy));
   }
 
-  // Row 6: play / stop (bright green while playing)
+  // Row 6: play / stop (bright green while playing), then the track this app controls
   MatrixOS::LED::SetColor(Point(0, 5), Lit(COLOR_PLAY, cc[CC_TRANSPORT] >= 64, Point(0, 5)));
+  for (uint8_t i = 0; i < CHANNELS; i++)
+    MatrixOS::LED::SetColor(Point(1 + i, 5), Lit(COLOR_CHANNEL, i == Ch(), Point(1 + i, 5)));
 
   // Row 7: record mode, record length (clock mode)
   for (uint8_t i = 0; i < 2; i++)

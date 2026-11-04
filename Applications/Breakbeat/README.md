@@ -4,7 +4,7 @@ A grid controller for the breakbeat track of **slompler**, the Raspberry Pi samp
 
 - Plug the Mystrix into the Pi (or the computer running slompler) over USB.
 - The sampler connects to it automatically and sends LED feedback only to MIDI ports with "Mystrix" in the name. Change this with `feedback.ports` in `midi_map.toml`.
-- Everything is on MIDI channel 1.
+- The app controls one sampler track at a time. Each track has its own MIDI channel; pick it on the Settings page (row 6, cols 2–8 = channels 1–7). It's remembered, and defaults to channel 1.
 
 Rows and columns below are 1-based, counted from the top-left.
 
@@ -45,7 +45,7 @@ Punch-in slice FX for held slices, active only while you touch a strip (left or 
 | 3 | FOLLOW REAL TIME (col 1) · QUANTIZE (col 2), orange toggles · PANIC (col 8, red) |
 | 4 | DJ FILTER: cols 1–3 low-pass strong→light, cols 4–5 off (white), cols 6–8 high-pass light→strong |
 | 5 | BIT CRUSH: col 1 off, cols 2–8 more and more crush (lit as a bar) |
-| 6 | PLAY / STOP (col 1, green): bright while playing. Play starts from the top of the loop |
+| 6 | PLAY / STOP (col 1, green): bright while playing. Play starts from the top of the loop · TRACK 1–7 (cols 2–8, cyan): which sampler track (MIDI channel) the app controls |
 | 7 | REC MODE clock · manual (cols 1–2, red) · REC BARS 1–4 for clock mode (cols 5–8, blue) |
 | 8 | REC (col 1) · UNDO (col 3, green) · PREV / NEXT loop (cols 6–7, blue) |
 

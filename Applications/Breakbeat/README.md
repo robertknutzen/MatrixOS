@@ -25,6 +25,17 @@ The whole 8×8 grid is the loop's slices. Pad n (left→right, top→bottom) sen
 - While the sampler is stopped, holding a pad auditions its slice (lit as held); no playhead is lit. Start it from the Settings page (row 6), the touchscreen, MIDI Start (e.g. the Elektron's play button) or note 34.
 - **Function key:** tap to open Settings, hold to exit the app.
 
+## Side touch strips (both pages)
+
+Punch-in slice FX for held slices, active only while you touch a strip (left or right, same on both):
+
+- **Upper half:** reverse.
+- **Lower half:** ping-pong, starting with a backward pass.
+- Let go and the HELD SLICE FX setting applies again; the setting itself never changes.
+- With QUANTIZE on, punching in and out waits for the next slice boundary.
+- It only changes held slices (and auditions while stopped); the free-running loop is unaffected.
+- The app turns the strips on while it's open, even if they're off in the device settings. Sends CC 28 (0 released, 64 reverse, 127 ping-pong).
+
 ## Settings page (tap the function key)
 
 | Row | Pads |

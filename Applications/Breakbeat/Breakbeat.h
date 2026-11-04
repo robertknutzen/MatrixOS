@@ -3,6 +3,8 @@
 //
 // Play page: the 8x8 grid is the loop's 64 slices. Pads light from the sampler's feedback.
 // Settings page (tap the function key): every setting and action as pads.
+// Side touch strips (both pages): punch-in slice FX for held slices while touched,
+// upper half = reverse, lower half = ping-pong.
 #pragma once
 
 #include "MatrixOS.h"
@@ -29,6 +31,7 @@ public:
   static constexpr uint8_t CC_QUANTIZE = 25;
   static constexpr uint8_t CC_REC_MODE = 26;
   static constexpr uint8_t CC_REC_BARS = 27;
+  static constexpr uint8_t CC_FX_PUNCH = 28; // momentary: 0 released, 64 reverse, 127 ping-pong
   static constexpr uint8_t CC_FILTER = 74;
   static constexpr uint8_t CC_CRUSH = 75;
   static constexpr uint8_t CC_REC_ARM = 80;
@@ -70,6 +73,12 @@ private:
   Timer renderTimer;
   bool held[8][8] = {};
 
+  // Touch strips: which segments are touched (0 = left, 1 = right), and the punch-in zone
+  enum PunchZone : int8_t { ZONE_NONE = -1, ZONE_REVERSE = 0, ZONE_PING_PONG = 1 };
+  bool stripTouched[2][8] = {};
+  int8_t punchZone = ZONE_NONE;
+  uint8_t punchSent = 0; // last CC_FX_PUNCH value sent
+
   // Mirror of the sampler, filled from its feedback
   bool connected = false; // any feedback seen yet
   uint8_t led[64] = {};
@@ -81,6 +90,9 @@ private:
   void HandleMidi(const MidiPacket& packet);
   void RequestRefresh();
   void ReleaseAllSlices();
+  void StripEvent(Point xy, KeypadState state);
+  bool ZoneTouched(int8_t zone);
+  void SendPunch();
 
   // Option helpers: settings with n options split 0-127 into equal ranges
   static uint8_t OptionIndex(uint8_t value, uint8_t n);

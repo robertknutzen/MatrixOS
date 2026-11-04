@@ -42,6 +42,9 @@ void Breakbeat::Setup(const vector<string>& args) {
   cc[CC_FOLLOW] = 127;
   cc[CC_QUANTIZE] = 127;
   cc[CC_FILTER] = 64;
+#ifdef FAMILY_MYSTRIX
+  Device::touchbarEnable.TempSet(true); // the side strips punch in slice FX
+#endif
   RequestRefresh();
 }
 
@@ -78,7 +81,12 @@ void Breakbeat::Loop() {
 void Breakbeat::End() {
   // Don't leave slices stuck on the sampler, and stop its feedback right away
   ReleaseAllSlices();
+  punchZone = ZONE_NONE;
+  SendPunch();
   SendCC(CC_ALIVE, 0);
+#ifdef FAMILY_MYSTRIX
+  Device::touchbarEnable.Load(); // back to the user's device setting
+#endif
 }
 
 // ---------- MIDI ----------
@@ -167,6 +175,11 @@ void Breakbeat::InputEventHandler(InputEvent& inputEvent) {
   Point xy;
   if (!MatrixOS::Input::GetPosition(inputEvent.id, &xy))
     return;
+  if ((xy.x == -1 || xy.x == 8) && xy.y >= 0 && xy.y < 8)
+  {
+    StripEvent(xy, inputEvent.keypad.state);
+    return;
+  }
   if (xy.x < 0 || xy.x >= 8 || xy.y < 0 || xy.y >= 8)
     return;
 
@@ -188,6 +201,50 @@ void Breakbeat::InputEventHandler(InputEvent& inputEvent) {
     PlayEvent(xy, state);
   else
     SettingsEvent(xy, state);
+}
+
+// Side strips: touching the upper half punches in reverse, the lower half ping-pong, for
+// held slices only. The last zone touched wins; letting go falls back to the other zone if
+// it's still touched, else releases (the Slice FX setting applies again).
+void Breakbeat::StripEvent(Point xy, KeypadState state) {
+  uint8_t side = xy.x < 0 ? 0 : 1;
+  int8_t zone = xy.y < 4 ? ZONE_REVERSE : ZONE_PING_PONG;
+  if (state == KeypadState::Pressed)
+  {
+    stripTouched[side][xy.y] = true;
+    punchZone = zone;
+  }
+  else if (state == KeypadState::Released)
+  {
+    stripTouched[side][xy.y] = false;
+    if (!ZoneTouched(punchZone))
+    {
+      int8_t other = punchZone == ZONE_REVERSE ? ZONE_PING_PONG : ZONE_REVERSE;
+      punchZone = ZoneTouched(other) ? other : ZONE_NONE;
+    }
+  }
+  else
+    return; // Hold / aftertouch aren't used
+  SendPunch();
+}
+
+bool Breakbeat::ZoneTouched(int8_t zone) {
+  if (zone == ZONE_NONE)
+    return false;
+  uint8_t from = zone == ZONE_REVERSE ? 0 : 4;
+  for (uint8_t side = 0; side < 2; side++)
+    for (uint8_t y = from; y < from + 4; y++)
+      if (stripTouched[side][y])
+        return true;
+  return false;
+}
+
+void Breakbeat::SendPunch() {
+  uint8_t value = punchZone == ZONE_REVERSE ? 64 : (punchZone == ZONE_PING_PONG ? 127 : 0);
+  if (value == punchSent)
+    return;
+  punchSent = value;
+  SendCC(CC_FX_PUNCH, value);
 }
 
 void Breakbeat::PlayEvent(Point xy, KeypadState state) {
